@@ -46,6 +46,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   bool _isIntercomRunning = false;
   bool _isDisconnecting = false;
   bool _isConnecting = false;
+  String? _pendingPeerName;
+  String? _pendingPeerAddress;
+  String? _connectedDeviceName;
+  String? _connectedDeviceAddress;
+  String? _connectedDeviceRole;
 
   StreamSubscription? _peerSub;
   StreamSubscription? _infoSub;
@@ -111,6 +116,8 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
             info.groupOwnerAddress.isNotEmpty);
     if (hasConnection && !_isConnected) {
       _onConnected(info);
+    } else if (hasConnection && _isConnected) {
+      _updateConnectedDevice(info);
     } else if (!hasConnection && _isConnected) {
       _onDisconnected();
     }
@@ -132,6 +139,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         _isConnected = true;
         _isConnecting = false;
         _status = "Connected as ${info.isGroupOwner ? 'Host' : 'Client'}";
+        _setConnectedDevice(info);
         _voiceManager = VoiceManager(t);
         _voiceManager?.init();
 
@@ -165,6 +173,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         _isConnecting = false;
         _isIntercomRunning = false;
         _isDisconnecting = false;
+        _pendingPeerName = null;
+        _pendingPeerAddress = null;
+        _connectedDeviceName = null;
+        _connectedDeviceAddress = null;
+        _connectedDeviceRole = null;
         _status = "Disconnected";
         _sendLevel = 0;
         _receiveLevel = 0;
@@ -188,6 +201,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         _isConnecting = false;
         _isIntercomRunning = false;
         _isDisconnecting = true;
+        _pendingPeerName = null;
+        _pendingPeerAddress = null;
+        _connectedDeviceName = null;
+        _connectedDeviceAddress = null;
+        _connectedDeviceRole = null;
         _status = "Disconnecting...";
         _sendLevel = 0;
         _receiveLevel = 0;
@@ -267,7 +285,13 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     _log(
       "Connecting to: ${peer.deviceName} (${peer.deviceAddress}), status=${peer.status}, isGroupOwner=${peer.isGroupOwner}",
     );
-    if (mounted) setState(() => _status = "Connecting to ${peer.deviceName}");
+    if (mounted) {
+      setState(() {
+        _pendingPeerName = peer.deviceName;
+        _pendingPeerAddress = peer.deviceAddress;
+        _status = "Connecting to ${peer.deviceName}";
+      });
+    }
 
     try {
       bool ok = await _plugin.connect(peer.deviceAddress);
@@ -278,12 +302,50 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         );
       }
       if (!ok) {
+        if (mounted) {
+          setState(() {
+            _pendingPeerName = null;
+            _pendingPeerAddress = null;
+          });
+        }
         _showError("Connect failed");
       }
     } catch (e) {
       _log("Connect failed: $e");
-      if (mounted) setState(() => _status = "Connect failed");
+      if (mounted) {
+        setState(() {
+          _pendingPeerName = null;
+          _pendingPeerAddress = null;
+          _status = "Connect failed";
+        });
+      }
       _showError("Connect failed: $e");
+    }
+  }
+
+  void _updateConnectedDevice(WifiP2PInfo info) {
+    if (!mounted) return;
+    setState(() => _setConnectedDevice(info));
+  }
+
+  void _setConnectedDevice(WifiP2PInfo info) {
+    if (info.isGroupOwner) {
+      final client = info.clients.isNotEmpty ? info.clients.first : null;
+      _connectedDeviceName = client?.deviceName ?? _connectedDeviceName;
+      _connectedDeviceAddress =
+          client?.deviceAddress ?? _connectedDeviceAddress;
+      _connectedDeviceRole = "Client";
+    } else {
+      _connectedDeviceName =
+          _pendingPeerName ?? _connectedDeviceName ?? "Group Owner";
+      final pendingPeerAddress = _pendingPeerAddress;
+      _connectedDeviceAddress =
+          pendingPeerAddress != null && pendingPeerAddress.isNotEmpty
+          ? pendingPeerAddress
+          : info.groupOwnerAddress.isNotEmpty
+          ? info.groupOwnerAddress
+          : _connectedDeviceAddress;
+      _connectedDeviceRole = "Host";
     }
   }
 
@@ -334,6 +396,46 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildConnectedDeviceInfo() {
+    final name = _connectedDeviceName ?? "Unknown device";
+    final address = _connectedDeviceAddress ?? "Unknown address";
+    final role = _connectedDeviceRole ?? "Peer";
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        border: Border.all(color: Colors.green.shade200),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.devices, color: Colors.green),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "$role / $address",
+                  style: Theme.of(context).textTheme.bodySmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -416,6 +518,8 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                       "Connected!",
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
+                    const SizedBox(height: 12),
+                    _buildConnectedDeviceInfo(),
                     const SizedBox(height: 20),
                     _buildLevelMeter("MIC (SENT)", _sendLevel, Colors.blue),
                     const SizedBox(height: 15),
