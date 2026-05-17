@@ -58,7 +58,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
   // デバッグ・可視化用
   final List<String> _logs = [];
-  WifiP2PInfo? _lastInfo;
   String _ipAddress = "Unknown";
   double _sendLevel = 0;
   double _receiveLevel = 0;
@@ -107,7 +106,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   }
 
   void _handleP2PInfo(WifiP2PInfo info) {
-    if (mounted) setState(() => _lastInfo = info);
     if (_isDisconnecting) return;
     final hasConnection =
         info.isConnected ||
@@ -330,11 +328,29 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
   void _setConnectedDevice(WifiP2PInfo info) {
     if (info.isGroupOwner) {
-      final client = info.clients.isNotEmpty ? info.clients.first : null;
-      _connectedDeviceName = client?.deviceName ?? _connectedDeviceName;
-      _connectedDeviceAddress =
-          client?.deviceAddress ?? _connectedDeviceAddress;
-      _connectedDeviceRole = "Client";
+      if (info.clients.isNotEmpty) {
+        final clientNames = info.clients
+            .map((client) => client.deviceName)
+            .where((name) => name.isNotEmpty)
+            .join(", ");
+        final clientAddresses = info.clients
+            .map((client) => client.deviceAddress)
+            .where((address) => address.isNotEmpty)
+            .join(", ");
+        _connectedDeviceName = clientNames.isEmpty
+            ? "${info.clients.length} connected clients"
+            : clientNames;
+        _connectedDeviceAddress = clientAddresses.isEmpty
+            ? "No client address"
+            : clientAddresses;
+        _connectedDeviceRole = info.clients.length == 1
+            ? "Client"
+            : "${info.clients.length} Clients";
+      } else {
+        _connectedDeviceName = _connectedDeviceName ?? "Waiting for clients";
+        _connectedDeviceAddress = _connectedDeviceAddress ?? "No client yet";
+        _connectedDeviceRole = "Host";
+      }
     } else {
       _connectedDeviceName =
           _pendingPeerName ?? _connectedDeviceName ?? "Group Owner";
@@ -458,7 +474,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
           Container(
             height: 180,
             width: double.infinity,
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             padding: const EdgeInsets.all(8),
             child: ListView.builder(
               itemCount: _logs.length,
@@ -476,6 +492,14 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
               child: Column(
                 children: [
                   if (!_isConnected) ...[
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _status,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
@@ -518,6 +542,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                       "Connected!",
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
+                    Text(_status, style: Theme.of(context).textTheme.bodySmall),
                     const SizedBox(height: 12),
                     _buildConnectedDeviceInfo(),
                     const SizedBox(height: 20),

@@ -1,30 +1,61 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:wifi_transceiver/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    const p2pChannel = MethodChannel('flutter_p2p_connection');
+    const foundPeersChannel = MethodChannel(
+      'flutter_p2p_connection_foundPeers',
+    );
+    const connectedPeersChannel = MethodChannel(
+      'flutter_p2p_connection_connectedPeers',
+    );
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(p2pChannel, (call) async {
+          switch (call.method) {
+            case 'initialize':
+            case 'resume':
+            case 'pause':
+              return true;
+            default:
+              return null;
+          }
+        });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(foundPeersChannel, (_) async => null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(connectedPeersChannel, (_) async => null);
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('flutter_p2p_connection'),
+          null,
+        );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('flutter_p2p_connection_foundPeers'),
+          null,
+        );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('flutter_p2p_connection_connectedPeers'),
+          null,
+        );
+  });
+
+  testWidgets('shows discovery controls before connecting', (tester) async {
     await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('P2P Debug Intercom'), findsOneWidget);
+    expect(find.text('Scan'), findsOneWidget);
+    expect(find.text('Create Group'), findsOneWidget);
   });
 }

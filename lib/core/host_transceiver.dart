@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_p2p_connection/flutter_p2p_connection.dart';
 import 'p2p_transceiver.dart';
 
@@ -9,7 +10,7 @@ class HostTransceiver implements P2PTransceiver {
   final _plugin = FlutterP2pConnection();
   final WifiP2PInfo? _initialInfo;
   bool _isConnected = false;
-  String? _peerAddress;
+  final Set<String> _peerAddresses = {};
   RawDatagramSocket? _socket;
   StreamSubscription? _infoSub;
 
@@ -19,7 +20,8 @@ class HostTransceiver implements P2PTransceiver {
   @override
   bool get isConnected => _isConnected;
   @override
-  String? get peerAddress => _peerAddress;
+  String? get peerAddress =>
+      _peerAddresses.isEmpty ? null : _peerAddresses.join(", ");
   @override
   Stream<bool> get connectionStatusStream => _statusController.stream;
   @override
@@ -41,7 +43,7 @@ class HostTransceiver implements P2PTransceiver {
 
   void _listenForConnection() {
     _infoSub ??= _plugin.streamWifiP2PInfo().listen((info) async {
-      print(
+      debugPrint(
         "Host P2P Info: isConnected=${info.isConnected}, groupFormed=${info.groupFormed}, clients=${info.clients.length}",
       );
       if (_canUseConnection(info)) {
@@ -70,11 +72,11 @@ class HostTransceiver implements P2PTransceiver {
       if (event == RawSocketEvent.read) {
         Datagram? dg = _socket?.receive();
         if (dg != null) {
-          // 受信したパケットの送信元を相手のIPとして記録（スラッシュ対策込み）
+          // Wi-Fi P2P info exposes client devices, but UDP replies need IPs.
           final incomingAddr = dg.address.address.replaceFirst("/", "");
-          if (_peerAddress != incomingAddr) {
-            _peerAddress = incomingAddr;
-          }
+          _peerAddresses.add(incomingAddr);
+
+          _relayAudioFrame(dg.data, exceptAddress: incomingAddr);
           _audioController.add(dg.data);
         }
       }
@@ -83,8 +85,19 @@ class HostTransceiver implements P2PTransceiver {
 
   @override
   Future<void> sendAudioFrame(List<int> frame) async {
-    if (_socket != null && _peerAddress != null) {
-      _socket?.send(frame, InternetAddress(_peerAddress!), 8888);
+    final socket = _socket;
+    if (socket == null) return;
+    for (final peerAddress in _peerAddresses) {
+      socket.send(frame, InternetAddress(peerAddress), 8888);
+    }
+  }
+
+  void _relayAudioFrame(List<int> frame, {required String exceptAddress}) {
+    final socket = _socket;
+    if (socket == null) return;
+    for (final peerAddress in _peerAddresses) {
+      if (peerAddress == exceptAddress) continue;
+      socket.send(frame, InternetAddress(peerAddress), 8888);
     }
   }
 
@@ -94,6 +107,7 @@ class HostTransceiver implements P2PTransceiver {
     await _infoSub?.cancel();
     _socket?.close();
     _socket = null;
+    _peerAddresses.clear();
     _isConnected = false;
     _statusController.add(false);
   }

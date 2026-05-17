@@ -4,12 +4,40 @@
 
 This is a Flutter app for Android-to-Android Wi-Fi Direct voice intercom.
 
-- `lib/main.dart`: app entry point, discovery UI, connection state handling, and intercom controls.
-- `lib/core/p2p_transceiver.dart`: interface for P2P audio transport.
-- `lib/core/host_transceiver.dart` and `lib/core/client_transceiver.dart`: role-specific Wi-Fi Direct and UDP implementations.
-- `lib/core/voice_manager.dart`: microphone capture, PCM playback, audio level reporting.
-- `android/`: Android configuration, permissions, Gradle files, and launcher resources.
+- `lib/main.dart`: app entry point, Wi-Fi Direct discovery UI, peer list, connection state handling, connected-device display, debug log display, audio level meters, intercom controls, disconnect handling, and Android sleep-lock method channel calls.
+- `lib/core/p2p_transceiver.dart`: shared interface for P2P audio transport implementations.
+- `lib/core/host_transceiver.dart`: Group Owner side transport. It binds UDP port `8888`, records the sender IP from received packets, and sends audio frames back to that peer.
+- `lib/core/client_transceiver.dart`: Client side transport. It uses the Group Owner address from Wi-Fi P2P info, binds UDP port `8888`, and sends/receives audio frames.
+- `lib/core/voice_manager.dart`: microphone capture, PCM playback, audio stream wiring, and send/receive audio level reporting.
+- `android/`: Android configuration, permissions, Gradle files, launcher resources, and native foreground service code for wake/Wi-Fi locks.
 - `test/`: Flutter widget tests. The current default counter test should be replaced with app-specific tests.
+
+## Current App Capabilities
+
+The current implementation provides a debug-oriented P2P intercom flow for two physical Android devices:
+
+- Initializes and registers `flutter_p2p_connection`.
+- Scans for Wi-Fi Direct peers with the `Scan` action.
+- Creates a Wi-Fi Direct group with `Create Group`.
+- Displays discovered peers and sends a connection request when a peer is tapped.
+- Monitors Wi-Fi P2P connection info and automatically selects Host or Client transport.
+- Shows connected peer name, address, and role when available.
+- Starts and stops an intercom session after connection.
+- Captures microphone audio as PCM 16-bit, 16 kHz, mono via `record`.
+- Sends and receives raw PCM audio over UDP port `8888`.
+- Plays received PCM with `flutter_pcm_sound`.
+- Displays simple MIC sent-level and SPEAKER received-level meters.
+- Maintains a small in-app debug log.
+- Starts an Android foreground service while intercom is running to hold a partial wake lock and high-performance Wi-Fi lock.
+- Disconnects by stopping audio, releasing locks, closing UDP sockets, and removing the Wi-Fi Direct group.
+
+## Known Limitations
+
+- Full behavior requires two physical Android devices; emulators are not suitable for Wi-Fi Direct testing.
+- Audio transport is raw UDP PCM. There is no jitter buffer, packet loss handling, echo cancellation, codec, encryption, or latency compensation.
+- On the Host side, `_peerAddress` is learned from the first received UDP packet, so the Host cannot send audio to the Client until at least one packet has arrived from the Client.
+- `VoiceManager.init()` only prints when microphone permission is missing; it does not currently surface an error state back to the UI.
+- The default `test/widget_test.dart` still tests the Flutter counter template and does not match this app.
 
 ## Build, Test, and Development Commands
 
@@ -43,3 +71,5 @@ Pull requests should include a concise summary, test results, target device/Andr
 ## Android Permissions & Runtime Notes
 
 Keep Android permission changes in `android/app/src/main/AndroidManifest.xml` aligned with runtime permission requests in `lib/main.dart`. Audio requires `RECORD_AUDIO`; Wi-Fi Direct discovery requires location services and, on newer Android versions, nearby Wi-Fi device permission.
+
+The Android native side includes `MainActivity.kt` and `IntercomForegroundService.kt`. The Flutter method channel `wifi_transceiver/power` starts and stops the foreground service with `acquireSleepLocks` and `releaseSleepLocks`. The service keeps microphone/Wi-Fi operation active using `WAKE_LOCK`, a high-performance `WifiLock`, and foreground service permissions.

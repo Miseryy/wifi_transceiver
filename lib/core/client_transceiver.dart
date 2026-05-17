@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_p2p_connection/flutter_p2p_connection.dart';
 import 'p2p_transceiver.dart';
 
@@ -47,7 +48,7 @@ class ClientTransceiver implements P2PTransceiver {
 
   void _listenForConnection() {
     _infoSub ??= _plugin.streamWifiP2PInfo().listen((info) async {
-      print(
+      debugPrint(
         "Client P2P Info: isConnected=${info.isConnected}, groupFormed=${info.groupFormed}, owner=${info.groupOwnerAddress}",
       );
       if (_canUseConnection(info)) {

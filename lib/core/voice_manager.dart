@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 import 'package:flutter_pcm_sound/flutter_pcm_sound.dart';
 import 'p2p_transceiver.dart';
@@ -25,7 +25,9 @@ class PcmAudioPlayer implements AudioPlayer {
   void play(Uint8List data) {
     // PcmArrayInt16にラップして送信
     // recordパッケージからくるのは little endian のバイト列なのでそのまま ByteData に渡せる
-    final pcmData = PcmArrayInt16(bytes: data.buffer.asByteData(data.offsetInBytes, data.lengthInBytes));
+    final pcmData = PcmArrayInt16(
+      bytes: data.buffer.asByteData(data.offsetInBytes, data.lengthInBytes),
+    );
     FlutterPcmSound.feed(pcmData);
   }
 
@@ -40,7 +42,7 @@ class VoiceManager {
   final P2PTransceiver transceiver;
   final _audioRecorder = AudioRecorder();
   final AudioPlayer _player = PcmAudioPlayer();
-  
+
   final _levelController = StreamController<Map<String, double>>.broadcast();
   Stream<Map<String, double>> get levelStream => _levelController.stream;
 
@@ -53,7 +55,10 @@ class VoiceManager {
   double _calculateLevel(Uint8List data) {
     if (data.isEmpty) return 0;
     double sum = 0;
-    final int16List = data.buffer.asInt16List(data.offsetInBytes, data.lengthInBytes ~/ 2);
+    final int16List = data.buffer.asInt16List(
+      data.offsetInBytes,
+      data.lengthInBytes ~/ 2,
+    );
     for (var sample in int16List) {
       sum += sample.abs();
     }
@@ -63,7 +68,7 @@ class VoiceManager {
 
   Future<void> init() async {
     if (!await _audioRecorder.hasPermission()) {
-      print("No microphone permission");
+      debugPrint("No microphone permission");
       return;
     }
     await _player.init();
@@ -75,9 +80,9 @@ class VoiceManager {
       sampleRate: 16000,
       numChannels: 1,
     );
-    
+
     final stream = await _audioRecorder.startStream(config);
-    
+
     _recordingSubscription = stream.listen((data) {
       // 送信データの音量を計算
       _levelController.add({'sent': _calculateLevel(Uint8List.fromList(data))});
